@@ -325,7 +325,7 @@ include { create_summary_report_wf } from './workflows/create_summary_report.nf'
 include { determine_lineage_wf } from './workflows/determine_lineage.nf'
 include { determine_mutations_wf } from './workflows/determine_mutations.nf'
 include { genome_quality_wf } from './workflows/genome_quality.nf'
-include { read_classification_wf; read_screening_freyja_wf; read_screening_concompra_wf; read_screening_lsc_wf} from './workflows/read_classification.nf'
+include { read_classification_wf; read_screening_freyja_wf; read_screening_concompra_wf; read_screening_lcs_wf} from './workflows/read_classification.nf'
 include { read_qc_wf } from './workflows/read_qc.nf'
 include { rki_report_wf } from './workflows/provide_rki.nf'
 
@@ -442,13 +442,21 @@ workflow {
             taxonomic_read_classification_ch = read_classification_wf.out.kraken
             if (params.screen_reads) {
                 if (params.lcs) {
-                    read_screening_lsc_wf(filtered_reads_ch)
+                    read_screening_lcs_wf(filtered_reads_ch)
                 }
                 if (params.freyja) {
                     read_screening_freyja_wf(artic_ncov_wf.out.binary_alignment.combine(reference_for_qc_input_ch))
                 }
                 if (params.concompra) {
-                    read_screening_concompra_wf(filtered_reads_ch)
+                    if (params.primerV.toString().contains(".bed")) {
+                        primer_bed = Channel.fromPath(params.primerV, checkIfExists: true )
+                        reference_fasta = external_primer_schemes / 'nCoV-2019' / 'V1200' / 'nCoV-2019.reference.fasta'
+                    } else {
+                        primer_bed = external_primer_schemes / 'nCoV-2019' / params.primerV / 'nCoV-2019.scheme.bed'
+                        reference_fasta = external_primer_schemes / 'nCoV-2019' / params.primerV / 'nCoV-2019.reference.fasta'
+                    }
+
+                    read_screening_concompra_wf(filtered_reads_ch, reference_fasta, primer_bed)
                 }
             }
             alignments_ch = align_to_reference(filtered_reads_ch.combine(reference_for_qc_input_ch))

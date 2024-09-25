@@ -1,26 +1,27 @@
-include { kraken2 } from './process/kraken2.nf' 
-include { krona } from './process/krona.nf' 
+include { kraken2 } from './process/kraken2.nf'
+include { krona } from './process/krona.nf'
 include { download_database_kraken2 } from './process/download_database_kraken2.nf'
 include { freyja; freyja_plot } from './process/freyja.nf'
+include { concompra_prep_primers; concompra } from './process/concompra.nf'
 include { lcs_plot; lcs_sc2; lcs_ucsc_markers_table } from './process/lcs_sc2'
 
 workflow read_classification_wf {
-    take:   
+    take:
         fastq
-    main: 
+    main:
 
     // Check for human contamination
         // database download
         if (params.krakendb) { kraken_db = file("${params.krakendb}") }
-        else  { download_database_kraken2(); kraken_db = download_database_kraken2.out } 
+        else  { download_database_kraken2(); kraken_db = download_database_kraken2.out }
 
         // classification
         kraken2(fastq, kraken_db)
 
         // visuals
         krona(kraken2.out)
-        
-    emit:   
+
+    emit:
         kraken = kraken2.out
 }
 
@@ -31,19 +32,36 @@ workflow read_screening_freyja_wf {
         freyja(alignment)
         freya_result_ch = freyja.out.aggregate.map{it -> it[1]}.collectFile(name: 'freyja_results.tsv', skip: 1, keepHeader: true, storeDir: "${params.output}/${params.lineagedir}/")
         freyja_plot(freya_result_ch)
-    
+
     emit:
         freyja_results = freyja.out.aggregate
         freyja_plots = freyja_plot.out
 }
 
-workflow read_screening_lsc_wf {
+workflow read_screening_concompra_wf {
+    take:
+        fastq
+        reference
+        primer_bed
+    main:
+        // split up primers in to individual pairs, because concompra can only
+        // handle one primer pair at a time
+        concompra_prep_primers(primer_bed, reference)
+
+        //concompra(fastq, concompra_prep_primers.out)
+
+    emit:
+        concompra_results = concompra_prep_primers.out
+        //concompra_results = concompra.out
+}
+
+workflow read_screening_lcs_wf {
     take:
         fastq
     main:
         // Metagenomic analysis
         // calculate mixed/ pooled samples using LCS, https://github.com/rvalieris/LCS
-        if (params.lcs_variant_groups == 'default')     { lcs_variant_groups_ch = Channel.empty() } 
+        if (params.lcs_variant_groups == 'default')     { lcs_variant_groups_ch = Channel.empty() }
         else                                            { lcs_variant_groups_ch = Channel.fromPath("${params.lcs_variant_groups}", checkIfExists: true)}
 
         lcs_ucsc_markers_table(lcs_variant_groups_ch.ifEmpty([]))
